@@ -45,21 +45,11 @@ export default function ExamFrame({
       if (document.hidden) handleAway();
       else handleReturn();
     }
-    function onBlur() {
-      handleAway();
-    }
-    function onFocus() {
-      handleReturn();
-    }
 
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("focus", onFocus);
     };
   }, [socket]);
 
