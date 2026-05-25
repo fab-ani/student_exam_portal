@@ -25,3 +25,13 @@ export async function getExam(examId: string): Promise<Exam> {
   if (!res.ok) throw new Error("Exam not found");
   return res.json();
 }
+
+export async function deleteExam(examId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/exams/${examId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to delete exam");
+  }
+}

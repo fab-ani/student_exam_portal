@@ -68,3 +68,14 @@ def list_sessions(exam_id: str):
         .all()
     )
     return jsonify([s.to_dict() for s in sessions])
+
+
+@api.delete("/exams/<exam_id>")
+def delete_exam(exam_id: str):
+    exam = db.session.get(Exam, exam_id)
+    if not exam:
+        return jsonify({"error": "not found"}), 404
+    # Cascade configured on the relationship removes child sessions.
+    db.session.delete(exam)
+    db.session.commit()
+    return jsonify({"ok": True})

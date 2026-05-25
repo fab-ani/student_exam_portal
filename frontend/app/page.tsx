@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import StoredExamCard from "@/components/StoredExamCard";
 import { createExam } from "@/lib/api";
+import {
+  getStoredExams,
+  upsertStoredExam,
+  type StoredExam,
+} from "@/lib/storage";
 
 export default function HomePage() {
   const router = useRouter();
@@ -16,6 +22,23 @@ export default function HomePage() {
     portal: string;
     teacher: string;
   } | null>(null);
+  const [stored, setStored] = useState<StoredExam[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+
+  function refresh() {
+    setStored(getStoredExams());
+  }
+
+  useEffect(() => {
+    setStored(getStoredExams());
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (stored.length === 0) setShowCreate(true);
+  }, [hydrated, stored.length]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,11 +48,20 @@ export default function HomePage() {
       const exam = await createExam({ title, googleFormUrl: url });
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      setCreated({
+      const portal = `${origin}/portal/${exam.id}`;
+      const teacher = `${origin}/teacher/${exam.id}`;
+
+      upsertStoredExam({
         id: exam.id,
-        portal: `${origin}/portal/${exam.id}`,
-        teacher: `${origin}/teacher/${exam.id}`,
+        title: exam.title,
+        googleFormUrl: exam.googleFormUrl,
+        portalUrl: portal,
+        teacherUrl: teacher,
+        createdAt: exam.createdAt,
       });
+      refresh();
+
+      setCreated({ id: exam.id, portal, teacher });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -38,8 +70,8 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 sm:p-6">
-      <div className="w-full max-w-xl">
+    <main className="min-h-screen flex items-start sm:items-center justify-center p-4 sm:p-6">
+      <div className="w-full max-w-2xl py-6 sm:py-0">
         <header className="mb-6 sm:mb-8 text-center">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             ExamShield
@@ -49,55 +81,105 @@ export default function HomePage() {
           </p>
         </header>
 
-        {!created ? (
-          <form
-            onSubmit={onSubmit}
-            className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 space-y-5"
-          >
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Exam Name
-              </label>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Midterm — Algorithms"
-                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
-              />
+        {stored.length > 0 && (
+          <section className="mb-6 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm uppercase tracking-wider text-gray-500 font-semibold">
+                Your Exams
+              </h2>
+              <span className="text-xs text-gray-400">
+                {stored.length} stored locally
+              </span>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Google Form URL
-              </label>
-              <input
-                type="url"
-                required
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://docs.google.com/forms/..."
-                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Must be a docs.google.com or forms.gle link.
-              </p>
+            <div className="space-y-3">
+              {stored.map((exam) => (
+                <StoredExamCard
+                  key={exam.id}
+                  exam={exam}
+                  onChanged={refresh}
+                />
+              ))}
             </div>
+          </section>
+        )}
 
-            {error && (
-              <div className="text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 break-words">
-                {error}
-              </div>
+        {!created ? (
+          <section>
+            {stored.length > 0 && !showCreate && (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="w-full bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-medium py-3 rounded-lg transition"
+              >
+                + New Exam
+              </button>
             )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
-            >
-              {submitting ? "Generating…" : "Generate Monitored Link"}
-            </button>
-          </form>
+            {(stored.length === 0 || showCreate) && (
+              <form
+                onSubmit={onSubmit}
+                className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 space-y-5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm uppercase tracking-wider text-gray-500 font-semibold">
+                    New Exam
+                  </h2>
+                  {stored.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCreate(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Exam Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Midterm — Algorithms"
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Google Form URL
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://docs.google.com/forms/..."
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Must be a docs.google.com or forms.gle link.
+                  </p>
+                </div>
+
+                {error && (
+                  <div className="text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 break-words">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
+                >
+                  {submitting ? "Generating…" : "Generate Monitored Link"}
+                </button>
+              </form>
+            )}
+          </section>
         ) : (
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 space-y-4">
             <div className="text-green-700 font-medium">Exam created.</div>
@@ -118,7 +200,7 @@ export default function HomePage() {
                 }}
                 className="px-4 py-3 bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 rounded-lg transition"
               >
-                Create another
+                Done
               </button>
             </div>
           </div>
