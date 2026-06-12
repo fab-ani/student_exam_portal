@@ -1,0 +1,9 @@
+# mise picks Python via runtime.txt; this file only adjusts mise behavior.
+# Skip GitHub artifact attestation verification on the standalone Python
+# binary downloads — Railway/Nixpacks builders sometimes can't reach the
+# attestation API or the attestation simply isn't published for this
+# build, which aborts the install. We trust the python-build-standalone
+# release artifact itself.
+
+[settings]
+python.github_attestations = false
