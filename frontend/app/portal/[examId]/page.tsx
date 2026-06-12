@@ -4,13 +4,20 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Socket } from "socket.io-client";
 
+import BriefingScreen from "@/components/BriefingScreen";
 import ExamFrame from "@/components/ExamFrame";
 import StudentOnboarding from "@/components/StudentOnboarding";
 import { getExam } from "@/lib/api";
 import { disconnectSocket, getSocket } from "@/lib/socket";
 import type { Exam, StudentSession } from "@/lib/types";
 
-type Phase = "loading" | "onboarding" | "exam" | "finished" | "error";
+type Phase =
+  | "loading"
+  | "onboarding"
+  | "briefing"
+  | "exam"
+  | "finished"
+  | "error";
 
 const storageKey = (examId: string) => `examshield:portal:${examId}`;
 
@@ -111,7 +118,7 @@ export default function StudentPortalPage() {
           setSession(res.session);
           if (res.exam) setExam(res.exam);
           setSocket(sock);
-          setPhase("exam");
+          setPhase("briefing");
           return;
         }
         if (res.locked) {
@@ -177,6 +184,17 @@ export default function StudentPortalPage() {
 
   if (phase === "onboarding" && exam) {
     return <StudentOnboarding examTitle={exam.title} onJoin={handleJoin} />;
+  }
+
+  if (phase === "briefing" && exam) {
+    return (
+      <BriefingScreen
+        examTitle={exam.title}
+        studentName={studentName}
+        questionCount={exam.questions?.length || 0}
+        onStart={() => setPhase("exam")}
+      />
+    );
   }
 
   if (phase === "exam" && exam && socket && session && exam.questions) {

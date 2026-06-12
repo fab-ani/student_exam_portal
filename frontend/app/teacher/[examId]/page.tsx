@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import StudentRow from "@/components/StudentRow";
+import StudentRow, { type ProgressInfo } from "@/components/StudentRow";
 import { deleteExam } from "@/lib/api";
 import { downloadExamPdf } from "@/lib/pdf";
 import { getSocket } from "@/lib/socket";
@@ -23,6 +23,7 @@ export default function TeacherDashboardPage() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [sessions, setSessions] = useState<Record<string, StudentSession>>({});
   const [awayStarts, setAwayStarts] = useState<Record<string, number>>({});
+  const [progresses, setProgresses] = useState<Record<string, ProgressInfo>>({});
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -144,6 +145,17 @@ export default function TeacherDashboardPage() {
       }
     };
 
+    const handleStudentProgress = (data: ProgressInfo & { sessionId: string }) => {
+      setProgresses((prev) => ({
+        ...prev,
+        [data.sessionId]: {
+          questionIndex: data.questionIndex,
+          timeLimitSeconds: data.timeLimitSeconds,
+          startedAt: data.startedAt,
+        },
+      }));
+    };
+
     const handleStudentDisconnected = ({
       sessionId,
     }: {
@@ -163,6 +175,7 @@ export default function TeacherDashboardPage() {
     socket.on("disconnect", handleDisconnect);
     socket.on("student-joined", handleStudentJoined);
     socket.on("live-alert", handleLiveAlert);
+    socket.on("student-progress", handleStudentProgress);
     socket.on("student-disconnected", handleStudentDisconnected);
 
     if (socket.connected) handleConnect();
@@ -172,6 +185,7 @@ export default function TeacherDashboardPage() {
       socket.off("disconnect", handleDisconnect);
       socket.off("student-joined", handleStudentJoined);
       socket.off("live-alert", handleLiveAlert);
+      socket.off("student-progress", handleStudentProgress);
       socket.off("student-disconnected", handleStudentDisconnected);
     };
   }, [examId]);
@@ -279,12 +293,13 @@ export default function TeacherDashboardPage() {
 
       <section className="max-w-6xl mx-auto bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-gray-50 text-gray-600 text-left text-xs uppercase tracking-wider">
               <tr>
                 <th className="px-3 sm:px-4 py-3 font-medium">Student</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Status</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Score</th>
+                <th className="px-3 sm:px-4 py-3 font-medium">Progress</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Switches</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Total Away</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Current Away</th>
@@ -294,7 +309,7 @@ export default function TeacherDashboardPage() {
               {sessionList.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-10 sm:py-12 text-center text-gray-500"
                   >
                     Waiting for students to join…
@@ -306,6 +321,7 @@ export default function TeacherDashboardPage() {
                     key={s.id}
                     session={s}
                     awayStart={awayStarts[s.id]}
+                    progress={progresses[s.id]}
                   />
                 ))
               )}

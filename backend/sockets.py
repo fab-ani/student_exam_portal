@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from flask import request
 from flask_socketio import join_room
 
@@ -161,6 +163,37 @@ def on_violation_away(payload):
             "sessionId": session_id,
             "status": "AWAY",
             "awayStart": (payload or {}).get("awayStart"),
+        },
+        room=_teacher_room(exam_id),
+    )
+
+
+@socketio.on("question-progress")
+def on_question_progress(payload):
+    meta = _connections.get(request.sid) or {}
+    if meta.get("role") != "student":
+        return
+    exam_id = meta.get("examId")
+    session_id = meta.get("sessionId")
+    if not (exam_id and session_id):
+        return
+
+    payload = payload or {}
+    try:
+        question_index = int(payload.get("questionIndex"))
+        time_limit_seconds = int(payload.get("timeLimitSeconds"))
+    except (TypeError, ValueError):
+        return
+    if question_index < 0 or time_limit_seconds <= 0:
+        return
+
+    socketio.emit(
+        "student-progress",
+        {
+            "sessionId": session_id,
+            "questionIndex": question_index,
+            "timeLimitSeconds": time_limit_seconds,
+            "startedAt": int(datetime.now(timezone.utc).timestamp() * 1000),
         },
         room=_teacher_room(exam_id),
     )

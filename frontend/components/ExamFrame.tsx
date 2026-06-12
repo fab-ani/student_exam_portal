@@ -53,6 +53,16 @@ export default function ExamFrame({
     if (currentQ) setRemaining(currentQ.timeLimitSeconds);
   }, [currentQ?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tell the teacher dashboard which question this student is currently on.
+  useEffect(() => {
+    const q = questions[index];
+    if (!q || finishedRef.current) return;
+    socket.emit("question-progress", {
+      questionIndex: index,
+      timeLimitSeconds: q.timeLimitSeconds,
+    });
+  }, [index, questions, socket]);
+
   const handleSubmit = useCallback(
     async (opts?: { tabSwitchTriggered?: boolean }) => {
       if (finishedRef.current) return;

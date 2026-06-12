@@ -5,13 +5,23 @@ import { useEffect, useState } from "react";
 import type { StudentSession } from "@/lib/types";
 import { formatSeconds } from "@/lib/format";
 
-interface Props {
-  session: StudentSession;
-  awayStart?: number; // ms epoch when AWAY started, for live counter
+export interface ProgressInfo {
+  questionIndex: number;
+  timeLimitSeconds: number;
+  startedAt: number; // ms epoch from the server
 }
 
-export default function StudentRow({ session, awayStart }: Props) {
+interface Props {
+  session: StudentSession;
+  awayStart?: number;
+  progress?: ProgressInfo;
+}
+
+export default function StudentRow({ session, awayStart, progress }: Props) {
   const [liveAway, setLiveAway] = useState(0);
+  const [questionRemaining, setQuestionRemaining] = useState<number | null>(
+    null
+  );
 
   useEffect(() => {
     if (session.status !== "AWAY" || !awayStart) {
@@ -23,6 +33,21 @@ export default function StudentRow({ session, awayStart }: Props) {
     const id = window.setInterval(tick, 500);
     return () => window.clearInterval(id);
   }, [session.status, awayStart]);
+
+  useEffect(() => {
+    if (!progress || session.status === "SUBMITTED") {
+      setQuestionRemaining(null);
+      return;
+    }
+    const compute = () => {
+      const elapsed = Math.floor((Date.now() - progress.startedAt) / 1000);
+      const left = Math.max(0, progress.timeLimitSeconds - elapsed);
+      setQuestionRemaining(left);
+    };
+    compute();
+    const id = window.setInterval(compute, 500);
+    return () => window.clearInterval(id);
+  }, [progress, session.status]);
 
   const isAway = session.status === "AWAY";
   const isSubmitted = session.status === "SUBMITTED";
@@ -47,6 +72,20 @@ export default function StudentRow({ session, awayStart }: Props) {
           <span className="text-gray-900 font-medium">
             {session.score}
             <span className="text-gray-400"> / {session.maxScore}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
+      </td>
+      <td className="px-3 sm:px-4 py-3 tabular-nums">
+        {isSubmitted ? (
+          <span className="text-gray-400">—</span>
+        ) : progress ? (
+          <span className="text-gray-900">
+            <span className="font-medium">Q{progress.questionIndex + 1}</span>
+            {questionRemaining !== null && (
+              <span className="text-gray-500"> · {questionRemaining}s</span>
+            )}
           </span>
         ) : (
           <span className="text-gray-400">—</span>
