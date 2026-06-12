@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import QuestionBuilder from "@/components/QuestionBuilder";
 import StoredExamCard from "@/components/StoredExamCard";
 import { createExam } from "@/lib/api";
 import {
@@ -10,11 +11,26 @@ import {
   upsertStoredExam,
   type StoredExam,
 } from "@/lib/storage";
+import type { QuestionDraft } from "@/lib/types";
+
+function initialQuestions(): QuestionDraft[] {
+  return [
+    {
+      text: "",
+      options: [
+        { text: "", isCorrect: true },
+        { text: "", isCorrect: false },
+      ],
+    },
+  ];
+}
 
 export default function HomePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
+  const [questions, setQuestions] = useState<QuestionDraft[]>(
+    initialQuestions()
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{
@@ -40,12 +56,17 @@ export default function HomePage() {
     if (stored.length === 0) setShowCreate(true);
   }, [hydrated, stored.length]);
 
+  function resetForm() {
+    setTitle("");
+    setQuestions(initialQuestions());
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const exam = await createExam({ title, googleFormUrl: url });
+      const exam = await createExam({ title, questions });
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
       const portal = `${origin}/portal/${exam.id}`;
@@ -54,14 +75,15 @@ export default function HomePage() {
       upsertStoredExam({
         id: exam.id,
         title: exam.title,
-        googleFormUrl: exam.googleFormUrl,
         portalUrl: portal,
         teacherUrl: teacher,
         createdAt: exam.createdAt,
+        questionCount: exam.questions?.length || 0,
       });
       refresh();
 
       setCreated({ id: exam.id, portal, teacher });
+      resetForm();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -70,14 +92,14 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen flex items-start sm:items-center justify-center p-4 sm:p-6">
-      <div className="w-full max-w-2xl py-6 sm:py-0">
+    <main className="min-h-screen flex items-start justify-center p-4 sm:p-6">
+      <div className="w-full max-w-2xl py-6">
         <header className="mb-6 sm:mb-8 text-center">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             ExamShield
           </h1>
           <p className="mt-2 text-sm sm:text-base text-gray-500">
-            Wrap a Google Form. Track tab switches in real time.
+            Build a quiz. Share the link. Watch live.
           </p>
         </header>
 
@@ -126,7 +148,10 @@ export default function HomePage() {
                   {stored.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setShowCreate(false)}
+                      onClick={() => {
+                        setShowCreate(false);
+                        setError(null);
+                      }}
                       className="text-xs text-gray-500 hover:text-gray-700"
                     >
                       Cancel
@@ -147,21 +172,15 @@ export default function HomePage() {
                     className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Google Form URL
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://docs.google.com/forms/..."
-                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
+                  <div className="text-sm font-medium text-gray-700 mb-2">
+                    Questions
+                  </div>
+                  <QuestionBuilder
+                    questions={questions}
+                    onChange={setQuestions}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Must be a docs.google.com or forms.gle link.
-                  </p>
                 </div>
 
                 {error && (
@@ -175,7 +194,7 @@ export default function HomePage() {
                   disabled={submitting}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition"
                 >
-                  {submitting ? "Generating…" : "Generate Monitored Link"}
+                  {submitting ? "Creating…" : "Create Exam"}
                 </button>
               </form>
             )}
@@ -193,11 +212,7 @@ export default function HomePage() {
                 Open Live Dashboard
               </button>
               <button
-                onClick={() => {
-                  setCreated(null);
-                  setTitle("");
-                  setUrl("");
-                }}
+                onClick={() => setCreated(null)}
                 className="px-4 py-3 bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 rounded-lg transition"
               >
                 Done

@@ -47,6 +47,7 @@ interface JoinResponse {
   resumed?: boolean;
   locked?: boolean;
   session?: StudentSession;
+  exam?: Exam;
   error?: string;
 }
 
@@ -69,9 +70,14 @@ export default function StudentPortalPage() {
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [exam, setExam] = useState<Exam | null>(null);
+  const [session, setSession] = useState<StudentSession | null>(null);
   const [studentName, setStudentName] = useState("");
   const [socket, setSocket] = useState<Socket | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [finalResult, setFinalResult] = useState<{
+    score: number;
+    maxScore: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!examId) return;
@@ -100,8 +106,10 @@ export default function StudentPortalPage() {
         });
         if (cancelled) return;
 
-        if (res.ok) {
-          setStudentName(res.session?.studentName || stored.studentName);
+        if (res.ok && res.session) {
+          setStudentName(res.session.studentName || stored.studentName);
+          setSession(res.session);
+          if (res.exam) setExam(res.exam);
           setSocket(sock);
           setPhase("exam");
           return;
@@ -111,7 +119,6 @@ export default function StudentPortalPage() {
           setPhase("finished");
           return;
         }
-        // Unknown / stale session — clear and fall through to onboarding.
         clearStored(examId);
       }
 
@@ -144,6 +151,8 @@ export default function StudentPortalPage() {
       studentName: name,
     });
     setStudentName(name);
+    setSession(res.session);
+    if (res.exam) setExam(res.exam);
     setSocket(sock);
     setPhase("exam");
   }
@@ -170,13 +179,18 @@ export default function StudentPortalPage() {
     return <StudentOnboarding examTitle={exam.title} onJoin={handleJoin} />;
   }
 
-  if (phase === "exam" && exam && socket) {
+  if (phase === "exam" && exam && socket && session && exam.questions) {
     return (
       <ExamFrame
         socket={socket}
+        sessionId={session.id}
         studentName={studentName}
-        googleFormUrl={exam.googleFormUrl}
-        onFinished={() => setPhase("finished")}
+        examTitle={exam.title}
+        questions={exam.questions}
+        onFinished={(result) => {
+          setFinalResult(result);
+          setPhase("finished");
+        }}
       />
     );
   }
@@ -185,11 +199,21 @@ export default function StudentPortalPage() {
     <main className="min-h-screen flex items-center justify-center p-4 sm:p-6">
       <div className="text-center max-w-md">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-          Your exam session is locked.
+          Exam submitted.
         </h1>
-        <p className="text-sm sm:text-base text-gray-500 mt-2">
-          You can safely close this tab. Your responses were submitted directly
-          to Google Forms when you hit Submit there.
+        {finalResult && (
+          <div className="mt-4 inline-block bg-green-50 border border-green-200 rounded-xl px-5 py-3">
+            <div className="text-xs uppercase tracking-wider text-green-700 mb-1">
+              Your score
+            </div>
+            <div className="text-3xl font-bold text-green-700 tabular-nums">
+              {finalResult.score}
+              <span className="text-green-600/60"> / {finalResult.maxScore}</span>
+            </div>
+          </div>
+        )}
+        <p className="text-sm sm:text-base text-gray-500 mt-4">
+          You can safely close this tab.
         </p>
       </div>
     </main>

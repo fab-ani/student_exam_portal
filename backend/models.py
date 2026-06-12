@@ -18,21 +18,84 @@ class Exam(db.Model):
     id = db.Column(db.String(32), primary_key=True, default=_uuid)
     teacher_id = db.Column(db.String(64), nullable=False, default="default-teacher")
     title = db.Column(db.String(256), nullable=False)
-    google_form_url = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=_now, nullable=False)
 
+    questions = db.relationship(
+        "Question",
+        backref="exam",
+        cascade="all, delete-orphan",
+        order_by="Question.position",
+    )
     sessions = db.relationship(
         "StudentSession", backref="exam", cascade="all, delete-orphan"
     )
 
-    def to_dict(self):
+    def to_public_dict(self):
+        """Shape sent to students — no is_correct flags leaked."""
         return {
             "id": self.id,
-            "teacherId": self.teacher_id,
             "title": self.title,
-            "googleFormUrl": self.google_form_url,
             "createdAt": self.created_at.isoformat(),
+            "questions": [
+                {
+                    "id": q.id,
+                    "text": q.text,
+                    "position": q.position,
+                    "options": [
+                        {"id": o.id, "text": o.text, "position": o.position}
+                        for o in q.options
+                    ],
+                }
+                for q in self.questions
+            ],
         }
+
+    def to_summary_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "createdAt": self.created_at.isoformat(),
+            "questionCount": len(self.questions),
+        }
+
+
+class Question(db.Model):
+    __tablename__ = "questions"
+
+    id = db.Column(db.String(32), primary_key=True, default=_uuid)
+    exam_id = db.Column(
+        db.String(32), db.ForeignKey("exams.id", ondelete="CASCADE"), nullable=False
+    )
+    text = db.Column(db.Text, nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+
+    options = db.relationship(
+        "QuestionOption",
+        backref="question",
+        cascade="all, delete-orphan",
+        order_by="QuestionOption.position",
+    )
+
+    @property
+    def correct_option_id(self):
+        for o in self.options:
+            if o.is_correct:
+                return o.id
+        return None
+
+
+class QuestionOption(db.Model):
+    __tablename__ = "question_options"
+
+    id = db.Column(db.String(32), primary_key=True, default=_uuid)
+    question_id = db.Column(
+        db.String(32),
+        db.ForeignKey("questions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    text = db.Column(db.Text, nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    is_correct = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class StudentSession(db.Model):
@@ -46,8 +109,15 @@ class StudentSession(db.Model):
     violation_count = db.Column(db.Integer, nullable=False, default=0)
     total_time_away = db.Column(db.Integer, nullable=False, default=0)
     status = db.Column(db.String(16), nullable=False, default="ACTIVE")
+    score = db.Column(db.Integer, nullable=True)
+    max_score = db.Column(db.Integer, nullable=True)
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     updated_time = db.Column(
         db.DateTime(timezone=True), default=_now, onupdate=_now, nullable=False
+    )
+
+    answers = db.relationship(
+        "Answer", backref="session", cascade="all, delete-orphan"
     )
 
     def to_dict(self):
@@ -58,5 +128,29 @@ class StudentSession(db.Model):
             "violationCount": self.violation_count,
             "totalTimeAway": self.total_time_away,
             "status": self.status,
+            "score": self.score,
+            "maxScore": self.max_score,
+            "submittedAt": self.submitted_at.isoformat() if self.submitted_at else None,
             "updatedTime": self.updated_time.isoformat(),
         }
+
+
+class Answer(db.Model):
+    __tablename__ = "answers"
+
+    id = db.Column(db.String(32), primary_key=True, default=_uuid)
+    session_id = db.Column(
+        db.String(32),
+        db.ForeignKey("student_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question_id = db.Column(
+        db.String(32),
+        db.ForeignKey("questions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    selected_option_id = db.Column(
+        db.String(32),
+        db.ForeignKey("question_options.id", ondelete="SET NULL"),
+        nullable=True,
+    )

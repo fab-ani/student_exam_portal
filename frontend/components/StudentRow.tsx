@@ -32,7 +32,7 @@ export default function StudentRow({ session, awayStart }: Props) {
       className={[
         "border-b border-gray-200 transition-colors",
         isAway ? "bg-gray-100" : "bg-white",
-        isSubmitted ? "opacity-60" : "",
+        isSubmitted ? "opacity-70" : "",
       ].join(" ")}
     >
       <td className="px-3 sm:px-4 py-3">
@@ -41,6 +41,16 @@ export default function StudentRow({ session, awayStart }: Props) {
       </td>
       <td className="px-3 sm:px-4 py-3">
         <StatusPill status={session.status} />
+      </td>
+      <td className="px-3 sm:px-4 py-3 tabular-nums">
+        {session.maxScore != null && session.score != null ? (
+          <span className="text-gray-900 font-medium">
+            {session.score}
+            <span className="text-gray-400"> / {session.maxScore}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
       </td>
       <td className="px-3 sm:px-4 py-3 text-gray-900 tabular-nums">
         {session.violationCount}

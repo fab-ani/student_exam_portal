@@ -11,6 +11,11 @@ interface ExportInput {
   sessions: StudentSession[];
 }
 
+function scoreCell(s: StudentSession): string {
+  if (s.maxScore == null || s.score == null) return "—";
+  return `${s.score} / ${s.maxScore}`;
+}
+
 export function downloadExamPdf(input: ExportInput) {
   const doc = new jsPDF();
 
@@ -27,14 +32,17 @@ export function downloadExamPdf(input: ExportInput) {
   const rows = input.sessions.map((s) => [
     s.studentName,
     s.status,
+    scoreCell(s),
     String(s.violationCount),
     formatSeconds(s.totalTimeAway),
-    new Date(s.updatedTime).toLocaleString(),
+    s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—",
   ]);
 
   autoTable(doc, {
     startY: 48,
-    head: [["Student", "Status", "Switches", "Total Away", "Last Update"]],
+    head: [
+      ["Student", "Status", "Score", "Switches", "Total Away", "Submitted"],
+    ],
     body: rows,
     headStyles: { fillColor: [22, 163, 74], textColor: 255 },
     alternateRowStyles: { fillColor: [249, 250, 251] },

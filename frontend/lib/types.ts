@@ -1,11 +1,24 @@
 export type SessionStatus = "ACTIVE" | "AWAY" | "SUBMITTED";
 
+export interface QuestionOption {
+  id: string;
+  text: string;
+  position: number;
+}
+
+export interface Question {
+  id: string;
+  text: string;
+  position: number;
+  options: QuestionOption[];
+}
+
 export interface Exam {
   id: string;
-  teacherId: string;
   title: string;
-  googleFormUrl: string;
   createdAt: string;
+  questions?: Question[];
+  questionCount?: number;
 }
 
 export interface StudentSession {
@@ -15,6 +28,9 @@ export interface StudentSession {
   violationCount: number;
   totalTimeAway: number;
   status: SessionStatus;
+  score: number | null;
+  maxScore: number | null;
+  submittedAt: string | null;
   updatedTime: string;
 }
 
@@ -25,4 +41,11 @@ export interface LiveAlert {
   lastDuration?: number;
   violationCount?: number;
   totalTimeAway?: number;
+  score?: number;
+  maxScore?: number;
+}
+
+export interface QuestionDraft {
+  text: string;
+  options: { text: string; isCorrect: boolean }[];
 }

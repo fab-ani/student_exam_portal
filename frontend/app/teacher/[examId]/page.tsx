@@ -39,9 +39,8 @@ export default function TeacherDashboardPage() {
       setExam({
         id: cached.id,
         title: cached.title,
-        googleFormUrl: cached.googleFormUrl,
-        teacherId: "",
         createdAt: cached.createdAt,
+        questionCount: cached.questionCount,
       });
       if (cached.sessions) setSessions(cached.sessions);
     }
@@ -82,10 +81,10 @@ export default function TeacherDashboardPage() {
             upsertStoredExam({
               id: res.exam.id,
               title: res.exam.title,
-              googleFormUrl: res.exam.googleFormUrl,
               portalUrl: `${origin}/portal/${res.exam.id}`,
               teacherUrl: `${origin}/teacher/${res.exam.id}`,
               createdAt: res.exam.createdAt,
+              questionCount: res.exam.questionCount || 0,
             });
           }
           if (res.sessions) {
@@ -118,6 +117,13 @@ export default function TeacherDashboardPage() {
             alert.totalTimeAway !== undefined
               ? alert.totalTimeAway
               : current.totalTimeAway,
+          score: alert.score !== undefined ? alert.score : current.score,
+          maxScore:
+            alert.maxScore !== undefined ? alert.maxScore : current.maxScore,
+          submittedAt:
+            alert.status === "SUBMITTED" && !current.submittedAt
+              ? new Date().toISOString()
+              : current.submittedAt,
           updatedTime: new Date().toISOString(),
         };
         return { ...prev, [alert.sessionId]: next };
@@ -273,11 +279,12 @@ export default function TeacherDashboardPage() {
 
       <section className="max-w-6xl mx-auto bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
+          <table className="w-full text-sm min-w-[720px]">
             <thead className="bg-gray-50 text-gray-600 text-left text-xs uppercase tracking-wider">
               <tr>
                 <th className="px-3 sm:px-4 py-3 font-medium">Student</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Status</th>
+                <th className="px-3 sm:px-4 py-3 font-medium">Score</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Switches</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Total Away</th>
                 <th className="px-3 sm:px-4 py-3 font-medium">Current Away</th>
@@ -287,7 +294,7 @@ export default function TeacherDashboardPage() {
               {sessionList.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-4 py-10 sm:py-12 text-center text-gray-500"
                   >
                     Waiting for students to join…

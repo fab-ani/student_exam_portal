@@ -42,9 +42,6 @@ def on_disconnect():
     if not (exam_id and session_id):
         return
 
-    # If another active socket still holds this session (e.g. user reloaded
-    # and the new tab joined before the old tab's disconnect arrived), don't
-    # announce a disconnect for the same logical student.
     if _any_other_sid_has_session(session_id, request.sid):
         return
 
@@ -77,11 +74,11 @@ def on_join_exam(payload):
         )
         return {
             "ok": True,
-            "exam": exam.to_dict(),
+            "exam": exam.to_summary_dict(),
             "sessions": [s.to_dict() for s in sessions],
         }
 
-    # Resume path: client sends a sessionId it stashed in sessionStorage.
+    # Student path
     resume_id = (payload.get("sessionId") or "").strip()
     if resume_id:
         existing = db.session.get(StudentSession, resume_id)
@@ -89,7 +86,7 @@ def on_join_exam(payload):
             if existing.status == "SUBMITTED":
                 return {
                     "ok": False,
-                    "error": "session already locked",
+                    "error": "session already submitted",
                     "locked": True,
                 }
             existing.status = "ACTIVE"
@@ -110,10 +107,8 @@ def on_join_exam(payload):
                 "ok": True,
                 "resumed": True,
                 "session": existing.to_dict(),
-                "exam": exam.to_dict(),
+                "exam": exam.to_public_dict(),
             }
-        # Stored sessionId is unknown to this server (DB reset, wrong exam),
-        # fall through and create a fresh session.
 
     student_name = (payload.get("studentName") or "").strip()
     if not student_name:
@@ -140,7 +135,7 @@ def on_join_exam(payload):
         room=_teacher_room(exam_id),
     )
 
-    return {"ok": True, "session": session.to_dict(), "exam": exam.to_dict()}
+    return {"ok": True, "session": session.to_dict(), "exam": exam.to_public_dict()}
 
 
 @socketio.on("signal-violation-away")
@@ -205,34 +200,3 @@ def on_violation_return(payload):
         },
         room=_teacher_room(exam_id),
     )
-
-
-@socketio.on("submit-session")
-def on_submit_session():
-    meta = _connections.get(request.sid) or {}
-    if meta.get("role") != "student":
-        return
-    exam_id = meta.get("examId")
-    session_id = meta.get("sessionId")
-    if not (exam_id and session_id):
-        return
-
-    session = db.session.get(StudentSession, session_id)
-    if not session:
-        return
-
-    session.status = "SUBMITTED"
-    db.session.commit()
-
-    socketio.emit(
-        "live-alert",
-        {
-            "sessionId": session_id,
-            "status": "SUBMITTED",
-            "violationCount": session.violation_count,
-            "totalTimeAway": session.total_time_away,
-        },
-        room=_teacher_room(exam_id),
-    )
-
-    return {"ok": True}

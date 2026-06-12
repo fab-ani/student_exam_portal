@@ -1,11 +1,11 @@
-import type { Exam } from "./types";
+import type { Exam, QuestionDraft, StudentSession } from "./types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function createExam(input: {
   title: string;
-  googleFormUrl: string;
+  questions: QuestionDraft[];
   teacherId?: string;
 }): Promise<Exam> {
   const res = await fetch(`${API_URL}/api/exams`, {
@@ -34,4 +34,27 @@ export async function deleteExam(examId: string): Promise<void> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || "Failed to delete exam");
   }
+}
+
+export interface SubmitResult {
+  ok: boolean;
+  score: number;
+  maxScore: number;
+  session: StudentSession;
+}
+
+export async function submitAnswers(
+  sessionId: string,
+  answers: { questionId: string; selectedOptionId: string | null }[]
+): Promise<SubmitResult> {
+  const res = await fetch(`${API_URL}/api/sessions/${sessionId}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to submit");
+  }
+  return res.json();
 }

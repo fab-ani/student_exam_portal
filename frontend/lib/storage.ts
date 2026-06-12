@@ -1,14 +1,15 @@
 import type { StudentSession } from "./types";
 
-const KEY = "examshield:teacher:exams";
+// v2: dropped googleFormUrl from the stored shape after the native-quiz rewrite.
+const KEY = "examshield:teacher:exams:v2";
 
 export interface StoredExam {
   id: string;
   title: string;
-  googleFormUrl: string;
   portalUrl: string;
   teacherUrl: string;
   createdAt: string;
+  questionCount: number;
   sessions: Record<string, StudentSession>;
   lastUpdated: string;
 }
