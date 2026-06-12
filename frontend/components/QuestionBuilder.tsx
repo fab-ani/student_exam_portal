@@ -10,11 +10,17 @@ interface Props {
 function emptyQuestion(): QuestionDraft {
   return {
     text: "",
+    timeLimitSeconds: 30,
     options: [
       { text: "", isCorrect: true },
       { text: "", isCorrect: false },
     ],
   };
+}
+
+function clampSeconds(n: number): number {
+  if (!Number.isFinite(n)) return 30;
+  return Math.max(5, Math.min(3600, Math.round(n)));
 }
 
 export default function QuestionBuilder({ questions, onChange }: Props) {
@@ -114,6 +120,23 @@ export default function QuestionBuilder({ questions, onChange }: Props) {
             placeholder="Type your question here"
             className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
           />
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Time limit (seconds)</label>
+            <input
+              type="number"
+              min={5}
+              max={3600}
+              step={5}
+              value={q.timeLimitSeconds}
+              onChange={(e) =>
+                update(qIdx, {
+                  timeLimitSeconds: clampSeconds(parseInt(e.target.value, 10)),
+                })
+              }
+              className="w-20 bg-white border border-gray-300 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-500"
+            />
+          </div>
 
           <div className="space-y-2">
             {q.options.map((opt, oIdx) => (

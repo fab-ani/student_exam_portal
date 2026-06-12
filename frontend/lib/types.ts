@@ -10,6 +10,7 @@ export interface Question {
   id: string;
   text: string;
   position: number;
+  timeLimitSeconds: number;
   options: QuestionOption[];
 }
 
@@ -47,5 +48,6 @@ export interface LiveAlert {
 
 export interface QuestionDraft {
   text: string;
+  timeLimitSeconds: number;
   options: { text: string; isCorrect: boolean }[];
 }

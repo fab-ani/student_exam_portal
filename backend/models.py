@@ -41,6 +41,7 @@ class Exam(db.Model):
                     "id": q.id,
                     "text": q.text,
                     "position": q.position,
+                    "timeLimitSeconds": q.time_limit_seconds,
                     "options": [
                         {"id": o.id, "text": o.text, "position": o.position}
                         for o in q.options
@@ -68,6 +69,7 @@ class Question(db.Model):
     )
     text = db.Column(db.Text, nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
+    time_limit_seconds = db.Column(db.Integer, nullable=False, default=30)
 
     options = db.relationship(
         "QuestionOption",

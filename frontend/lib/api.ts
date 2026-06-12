@@ -45,12 +45,16 @@ export interface SubmitResult {
 
 export async function submitAnswers(
   sessionId: string,
-  answers: { questionId: string; selectedOptionId: string | null }[]
+  answers: { questionId: string; selectedOptionId: string | null }[],
+  options?: { tabSwitchTriggered?: boolean }
 ): Promise<SubmitResult> {
   const res = await fetch(`${API_URL}/api/sessions/${sessionId}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({
+      answers,
+      tabSwitchTriggered: !!options?.tabSwitchTriggered,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

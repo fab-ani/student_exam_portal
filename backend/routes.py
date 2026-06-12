@@ -49,7 +49,20 @@ def create_exam():
                 400,
             )
 
-        question = Question(text=q_text, position=q_idx)
+        try:
+            time_limit = int(raw_q.get("timeLimitSeconds") or 30)
+        except (TypeError, ValueError):
+            return (
+                jsonify(
+                    {"error": f"question {q_idx + 1} timeLimitSeconds must be a number"}
+                ),
+                400,
+            )
+        time_limit = max(5, min(3600, time_limit))
+
+        question = Question(
+            text=q_text, position=q_idx, time_limit_seconds=time_limit
+        )
         for o_idx, raw_o in enumerate(raw_options):
             opt_text = (raw_o.get("text") or "").strip()
             if not opt_text:
@@ -123,6 +136,7 @@ def submit_answers(session_id: str):
 
     data = request.get_json(silent=True) or {}
     raw_answers = data.get("answers") or []
+    tab_switch_triggered = bool(data.get("tabSwitchTriggered"))
     answers_by_question = {
         (a.get("questionId") or ""): (a.get("selectedOptionId") or None)
         for a in raw_answers
@@ -153,6 +167,9 @@ def submit_answers(session_id: str):
             score += 1
 
     from datetime import datetime, timezone
+
+    if tab_switch_triggered:
+        session.violation_count = (session.violation_count or 0) + 1
 
     session.score = score
     session.max_score = len(questions)

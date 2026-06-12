@@ -17,6 +17,7 @@ function initialQuestions(): QuestionDraft[] {
   return [
     {
       text: "",
+      timeLimitSeconds: 30,
       options: [
         { text: "", isCorrect: true },
         { text: "", isCorrect: false },
