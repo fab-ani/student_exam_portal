@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from flask import request
 from flask_socketio import join_room
+from sqlalchemy import func
 
 from extensions import db, socketio
 from models import Exam, StudentSession
@@ -115,6 +116,35 @@ def on_join_exam(payload):
     student_name = (payload.get("studentName") or "").strip()
     if not student_name:
         return {"ok": False, "error": "studentName required"}
+
+    # One name per exam, case-insensitive. Prevents re-takes after submission
+    # and prevents two browsers claiming the same identity at the same time.
+    existing_name = (
+        StudentSession.query.filter(
+            StudentSession.exam_id == exam_id,
+            func.lower(StudentSession.student_name) == student_name.lower(),
+        )
+        .first()
+    )
+    if existing_name:
+        if existing_name.status == "SUBMITTED":
+            return {
+                "ok": False,
+                "error": (
+                    "This name has already submitted this exam. "
+                    "You can only take it once."
+                ),
+                "alreadySubmitted": True,
+            }
+        return {
+            "ok": False,
+            "error": (
+                "Someone is already taking this exam under that name. "
+                "Use a different name, or ask your teacher to remove the "
+                "stuck entry."
+            ),
+            "duplicateName": True,
+        }
 
     session = StudentSession(
         exam_id=exam_id,
