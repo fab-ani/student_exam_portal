@@ -4,6 +4,7 @@ from flask import request
 from flask_socketio import join_room
 from sqlalchemy import func
 
+from auth import verify_token
 from extensions import db, socketio
 from models import Exam, StudentSession
 
@@ -68,8 +69,19 @@ def on_join_exam(payload):
         return {"ok": False, "error": "exam not found"}
 
     if role == "teacher":
+        token = (payload.get("token") or "").strip()
+        teacher_id = verify_token(token)
+        if not teacher_id:
+            return {"ok": False, "error": "unauthorized"}
+        if exam.teacher_id != teacher_id:
+            return {"ok": False, "error": "this exam belongs to another teacher"}
+
         join_room(_teacher_room(exam_id))
-        _connections[request.sid] = {"role": "teacher", "examId": exam_id}
+        _connections[request.sid] = {
+            "role": "teacher",
+            "examId": exam_id,
+            "teacherId": teacher_id,
+        }
         sessions = (
             StudentSession.query.filter_by(exam_id=exam_id)
             .order_by(StudentSession.updated_time.desc())

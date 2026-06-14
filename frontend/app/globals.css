@@ -12,3 +12,37 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Subtle dot-grid background — gives the page a circuit/board feel
+   without being distracting. Snap-aligned to 24px. */
+.page-grid {
+  background-image: radial-gradient(
+    rgba(17, 24, 39, 0.06) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  background-position: 0 0;
+}
+
+/* Slow LED-style breathing for "live" indicators. */
+@keyframes led-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0);
+  }
+}
+
+.led-live {
+  animation: led-pulse 1.6s ease-in-out infinite;
+}
+
+/* Brand wordmark uses the monospace face. */
+.brand-mark {
+  font-family: var(--font-mono), monospace;
+  letter-spacing: -0.02em;
+}

@@ -12,11 +12,27 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+class Teacher(db.Model):
+    __tablename__ = "teachers"
+
+    id = db.Column(db.String(32), primary_key=True, default=_uuid)
+    username = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now, nullable=False)
+
+    exams = db.relationship("Exam", backref="teacher", cascade="all, delete-orphan")
+
+
 class Exam(db.Model):
     __tablename__ = "exams"
 
     id = db.Column(db.String(32), primary_key=True, default=_uuid)
-    teacher_id = db.Column(db.String(64), nullable=False, default="default-teacher")
+    teacher_id = db.Column(
+        db.String(32),
+        db.ForeignKey("teachers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     title = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=_now, nullable=False)
 

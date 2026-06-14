@@ -5,13 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 
 import StudentRow, { type ProgressInfo } from "@/components/StudentRow";
 import { deleteExam } from "@/lib/api";
+import { clearAuth, getToken, getUser } from "@/lib/auth";
 import { downloadExamPdf } from "@/lib/pdf";
 import { getSocket } from "@/lib/socket";
 import {
-  getStoredExam,
-  removeStoredExam,
+  getSnapshot,
+  removeSnapshot,
   snapshotSessions,
-  upsertStoredExam,
 } from "@/lib/storage";
 import type { Exam, LiveAlert, StudentSession } from "@/lib/types";
 
@@ -28,33 +28,33 @@ export default function TeacherDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const joinedRef = useRef(false);
 
-  // Hydrate from localStorage cache so the dashboard shows the last known
-  // state immediately, even before the WebSocket join completes.
+  // Redirect to home if not signed in.
   useEffect(() => {
-    if (!examId) return;
-    const cached = getStoredExam(examId);
-    if (cached) {
-      setExam({
-        id: cached.id,
-        title: cached.title,
-        createdAt: cached.createdAt,
-        questionCount: cached.questionCount,
-      });
-      if (cached.sessions) setSessions(cached.sessions);
+    if (!getToken() || !getUser()) {
+      router.replace("/");
+      return;
     }
-  }, [examId]);
+    setAuthChecked(true);
+  }, [router]);
 
-  // Persist every change so navigating away doesn't lose the snapshot.
+  // Hydrate sessions from snapshot cache so the table appears immediately.
+  useEffect(() => {
+    if (!examId || !authChecked) return;
+    const snap = getSnapshot(examId);
+    if (snap?.sessions) setSessions(snap.sessions);
+  }, [examId, authChecked]);
+
   useEffect(() => {
     if (!examId || !exam) return;
     snapshotSessions(examId, sessions);
   }, [examId, exam, sessions]);
 
   useEffect(() => {
-    if (!examId) return;
+    if (!examId || !authChecked) return;
     const socket = getSocket();
 
     const handleConnect = () => {
@@ -64,7 +64,7 @@ export default function TeacherDashboardPage() {
 
       socket.emit(
         "join-exam",
-        { role: "teacher", examId },
+        { role: "teacher", examId, token: getToken() },
         (res: {
           ok: boolean;
           exam?: Exam;
@@ -72,22 +72,16 @@ export default function TeacherDashboardPage() {
           error?: string;
         }) => {
           if (!res?.ok) {
-            setError(res?.error || "Failed to join exam");
+            const msg = res?.error || "Failed to join exam";
+            if (/unauthorized/i.test(msg)) {
+              clearAuth();
+              router.replace("/");
+              return;
+            }
+            setError(msg);
             return;
           }
-          if (res.exam) {
-            setExam(res.exam);
-            const origin =
-              typeof window !== "undefined" ? window.location.origin : "";
-            upsertStoredExam({
-              id: res.exam.id,
-              title: res.exam.title,
-              portalUrl: `${origin}/portal/${res.exam.id}`,
-              teacherUrl: `${origin}/teacher/${res.exam.id}`,
-              createdAt: res.exam.createdAt,
-              questionCount: res.exam.questionCount || 0,
-            });
-          }
+          if (res.exam) setExam(res.exam);
           if (res.sessions) {
             const map: Record<string, StudentSession> = {};
             for (const s of res.sessions) map[s.id] = s;
@@ -145,7 +139,9 @@ export default function TeacherDashboardPage() {
       }
     };
 
-    const handleStudentProgress = (data: ProgressInfo & { sessionId: string }) => {
+    const handleStudentProgress = (
+      data: ProgressInfo & { sessionId: string }
+    ) => {
       setProgresses((prev) => ({
         ...prev,
         [data.sessionId]: {
@@ -188,7 +184,7 @@ export default function TeacherDashboardPage() {
       socket.off("student-progress", handleStudentProgress);
       socket.off("student-disconnected", handleStudentDisconnected);
     };
-  }, [examId]);
+  }, [examId, authChecked, router]);
 
   const sessionList = useMemo(() => Object.values(sessions), [sessions]);
 
@@ -219,12 +215,20 @@ export default function TeacherDashboardPage() {
     setDeleting(true);
     try {
       await deleteExam(examId);
-      removeStoredExam(examId);
+      removeSnapshot(examId);
       router.push("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete");
       setDeleting(false);
     }
+  }
+
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading…
+      </main>
+    );
   }
 
   if (error && !exam) {

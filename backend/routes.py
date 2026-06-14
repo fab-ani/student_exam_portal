@@ -1,9 +1,19 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+from auth import (
+    hash_password,
+    issue_token,
+    require_teacher,
+    verify_password,
+)
 from extensions import db, socketio
-from models import Answer, Exam, Question, QuestionOption, StudentSession
+from models import Answer, Exam, Question, QuestionOption, StudentSession, Teacher
 
 api = Blueprint("api", __name__, url_prefix="/api")
+auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+# --- Health ---
 
 
 @api.get("/health")
@@ -11,11 +21,71 @@ def health():
     return jsonify({"ok": True})
 
 
+# --- Auth ---
+
+
+@auth_bp.post("/register")
+def register():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+    if len(username) < 3:
+        return jsonify({"error": "username must be at least 3 characters"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "password must be at least 6 characters"}), 400
+
+    if Teacher.query.filter_by(username=username).first():
+        return jsonify({"error": "username already taken"}), 409
+
+    teacher = Teacher(username=username, password_hash=hash_password(password))
+    db.session.add(teacher)
+    db.session.commit()
+
+    return (
+        jsonify(
+            {
+                "token": issue_token(teacher.id),
+                "teacherId": teacher.id,
+                "username": teacher.username,
+            }
+        ),
+        201,
+    )
+
+
+@auth_bp.post("/login")
+def login():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+
+    teacher = Teacher.query.filter_by(username=username).first()
+    if not teacher or not verify_password(teacher.password_hash, password):
+        return jsonify({"error": "invalid username or password"}), 401
+
+    return jsonify(
+        {
+            "token": issue_token(teacher.id),
+            "teacherId": teacher.id,
+            "username": teacher.username,
+        }
+    )
+
+
+@auth_bp.get("/me")
+@require_teacher
+def me():
+    return jsonify({"teacherId": g.teacher.id, "username": g.teacher.username})
+
+
+# --- Exams (mostly teacher-scoped) ---
+
+
 @api.post("/exams")
+@require_teacher
 def create_exam():
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "").strip()
-    teacher_id = (data.get("teacherId") or "default-teacher").strip()
     raw_questions = data.get("questions") or []
 
     if not title:
@@ -23,7 +93,7 @@ def create_exam():
     if not isinstance(raw_questions, list) or len(raw_questions) == 0:
         return jsonify({"error": "at least one question is required"}), 400
 
-    exam = Exam(title=title, teacher_id=teacher_id)
+    exam = Exam(title=title, teacher_id=g.teacher.id)
 
     for q_idx, raw_q in enumerate(raw_questions):
         q_text = (raw_q.get("text") or "").strip()
@@ -91,8 +161,20 @@ def create_exam():
     return jsonify(exam.to_public_dict()), 201
 
 
+@api.get("/exams")
+@require_teacher
+def list_my_exams():
+    exams = (
+        Exam.query.filter_by(teacher_id=g.teacher.id)
+        .order_by(Exam.created_at.desc())
+        .all()
+    )
+    return jsonify([e.to_summary_dict() for e in exams])
+
+
 @api.get("/exams/<exam_id>")
 def get_exam(exam_id: str):
+    """Public: students need this to render the quiz. No is_correct leaked."""
     exam = db.session.get(Exam, exam_id)
     if not exam:
         return jsonify({"error": "not found"}), 404
@@ -100,9 +182,10 @@ def get_exam(exam_id: str):
 
 
 @api.get("/exams/<exam_id>/sessions")
+@require_teacher
 def list_sessions(exam_id: str):
     exam = db.session.get(Exam, exam_id)
-    if not exam:
+    if not exam or exam.teacher_id != g.teacher.id:
         return jsonify({"error": "not found"}), 404
     sessions = (
         StudentSession.query.filter_by(exam_id=exam_id)
@@ -113,13 +196,17 @@ def list_sessions(exam_id: str):
 
 
 @api.delete("/exams/<exam_id>")
+@require_teacher
 def delete_exam(exam_id: str):
     exam = db.session.get(Exam, exam_id)
-    if not exam:
+    if not exam or exam.teacher_id != g.teacher.id:
         return jsonify({"error": "not found"}), 404
     db.session.delete(exam)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# --- Student submit (no auth: students aren't logged in) ---
 
 
 def _teacher_room(exam_id: str) -> str:
@@ -149,8 +236,6 @@ def submit_answers(session_id: str):
         .all()
     )
 
-    # Wipe any previous draft answers for this session before recording the
-    # final submission (shouldn't normally happen, but harmless).
     Answer.query.filter_by(session_id=session.id).delete()
 
     score = 0

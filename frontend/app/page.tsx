@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import AuthForm from "@/components/AuthForm";
+import ExamCard from "@/components/ExamCard";
 import QuestionBuilder from "@/components/QuestionBuilder";
-import StoredExamCard from "@/components/StoredExamCard";
-import { createExam } from "@/lib/api";
-import {
-  getStoredExams,
-  upsertStoredExam,
-  type StoredExam,
-} from "@/lib/storage";
-import type { QuestionDraft } from "@/lib/types";
+import { createExam, fetchMe, listMyExams } from "@/lib/api";
+import { clearAuth, getUser, type AuthUser } from "@/lib/auth";
+import type { Exam, QuestionDraft } from "@/lib/types";
 
 function initialQuestions(): QuestionDraft[] {
   return [
@@ -28,107 +25,169 @@ function initialQuestions(): QuestionDraft[] {
 
 export default function HomePage() {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
+  const [loadingList, setLoadingList] = useState(false);
+
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState<QuestionDraft[]>(
     initialQuestions()
   );
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [created, setCreated] = useState<{
     id: string;
     portal: string;
     teacher: string;
   } | null>(null);
-  const [stored, setStored] = useState<StoredExam[]>([]);
-  const [hydrated, setHydrated] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
-  function refresh() {
-    setStored(getStoredExams());
-  }
-
-  useEffect(() => {
-    setStored(getStoredExams());
-    setHydrated(true);
+  const refresh = useCallback(async () => {
+    setListError(null);
+    setLoadingList(true);
+    try {
+      const list = await listMyExams();
+      setExams(list);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to load exams";
+      setListError(msg);
+      if (/sign in again/i.test(msg)) {
+        setUser(null);
+      }
+    } finally {
+      setLoadingList(false);
+    }
   }, []);
 
+  // Hydrate auth on mount, refresh `me` against the server to catch expired tokens.
   useEffect(() => {
-    if (!hydrated) return;
-    if (stored.length === 0) setShowCreate(true);
-  }, [hydrated, stored.length]);
+    const cached = getUser();
+    if (!cached) {
+      setHydrated(true);
+      return;
+    }
+    setUser(cached);
+    fetchMe()
+      .then((me) => {
+        setUser(me);
+        return refresh();
+      })
+      .catch(() => {
+        clearAuth();
+        setUser(null);
+      })
+      .finally(() => setHydrated(true));
+  }, [refresh]);
 
-  function resetForm() {
+  useEffect(() => {
+    if (hydrated && user && exams.length === 0 && !loadingList && !listError) {
+      setShowCreate(true);
+    }
+  }, [hydrated, user, exams.length, loadingList, listError]);
+
+  function logout() {
+    clearAuth();
+    setUser(null);
+    setExams([]);
+  }
+
+  function resetCreateForm() {
     setTitle("");
     setQuestions(initialQuestions());
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setCreateError(null);
     setSubmitting(true);
     try {
       const exam = await createExam({ title, questions });
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const portal = `${origin}/portal/${exam.id}`;
-      const teacher = `${origin}/teacher/${exam.id}`;
-
-      upsertStoredExam({
+      setCreated({
         id: exam.id,
-        title: exam.title,
-        portalUrl: portal,
-        teacherUrl: teacher,
-        createdAt: exam.createdAt,
-        questionCount: exam.questions?.length || 0,
+        portal: `${origin}/portal/${exam.id}`,
+        teacher: `${origin}/teacher/${exam.id}`,
       });
-      refresh();
-
-      setCreated({ id: exam.id, portal, teacher });
-      resetForm();
+      resetCreateForm();
+      await refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setCreateError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (!hydrated) {
+    return (
+      <main className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading…
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AuthForm
+        onSuccess={(u) => {
+          setUser(u);
+          refresh();
+        }}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-start justify-center p-4 sm:p-6">
       <div className="w-full max-w-2xl py-6">
-        <header className="mb-6 sm:mb-8 text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            ExamShield
-          </h1>
-          <p className="mt-2 text-sm sm:text-base text-gray-500">
-            Build a quiz. Share the link. Watch live.
-          </p>
+        <header className="mb-6 sm:mb-8 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+              ExamShield
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Signed in as{" "}
+              <span className="font-medium text-gray-700">{user.username}</span>
+            </p>
+          </div>
+          <button
+            onClick={logout}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Sign out
+          </button>
         </header>
 
-        {stored.length > 0 && (
+        {exams.length > 0 && (
           <section className="mb-6 space-y-3">
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm uppercase tracking-wider text-gray-500 font-semibold">
                 Your Exams
               </h2>
               <span className="text-xs text-gray-400">
-                {stored.length} stored locally
+                {exams.length} on server
               </span>
             </div>
             <div className="space-y-3">
-              {stored.map((exam) => (
-                <StoredExamCard
-                  key={exam.id}
-                  exam={exam}
-                  onChanged={refresh}
-                />
+              {exams.map((exam) => (
+                <ExamCard key={exam.id} exam={exam} onChanged={refresh} />
               ))}
             </div>
           </section>
         )}
 
+        {listError && (
+          <div className="mb-4 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 break-words">
+            {listError}
+          </div>
+        )}
+
         {!created ? (
           <section>
-            {stored.length > 0 && !showCreate && (
+            {exams.length > 0 && !showCreate && (
               <button
                 onClick={() => setShowCreate(true)}
                 className="w-full bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-medium py-3 rounded-lg transition"
@@ -137,7 +196,7 @@ export default function HomePage() {
               </button>
             )}
 
-            {(stored.length === 0 || showCreate) && (
+            {(exams.length === 0 || showCreate) && (
               <form
                 onSubmit={onSubmit}
                 className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 space-y-5"
@@ -146,12 +205,12 @@ export default function HomePage() {
                   <h2 className="text-sm uppercase tracking-wider text-gray-500 font-semibold">
                     New Exam
                   </h2>
-                  {stored.length > 0 && (
+                  {exams.length > 0 && (
                     <button
                       type="button"
                       onClick={() => {
                         setShowCreate(false);
-                        setError(null);
+                        setCreateError(null);
                       }}
                       className="text-xs text-gray-500 hover:text-gray-700"
                     >
@@ -184,9 +243,9 @@ export default function HomePage() {
                   />
                 </div>
 
-                {error && (
+                {createError && (
                   <div className="text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 break-words">
-                    {error}
+                    {createError}
                   </div>
                 )}
 

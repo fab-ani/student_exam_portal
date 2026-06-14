@@ -3,7 +3,7 @@ from flask_cors import CORS
 
 from config import Config
 from extensions import db, socketio
-from routes import api
+from routes import api, auth_bp
  
 
 def create_app() -> Flask:
@@ -16,6 +16,7 @@ def create_app() -> Flask:
     socketio.init_app(app, cors_allowed_origins=Config.CORS_ORIGINS)
 
     app.register_blueprint(api)
+    app.register_blueprint(auth_bp)
 
     # register socket handlers
     import sockets  # noqa: F401
